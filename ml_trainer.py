@@ -25,12 +25,12 @@ def entrenar_y_guardar_modelos(archivo_csv="dataset_jugadas.csv"):
         
         # MODELO 1: Aprendizaje Supervisado (Árbol de Decisión)
         # Predecirá a quién va a atacar el humano basándose en las barras de vida
-        modelo_arbol = DecisionTreeClassifier(max_depth=5, random_state=42)
+        modelo_arbol = DecisionTreeClassifier(max_depth=4, random_state=42)
         modelo_arbol.fit(X, y_objetivo)
         
         # MODELO 2: Aprendizaje No Supervisado (K-Means)
-        # Agrupará los estilos de los tableros en 3 clústeres (ej: "Peligroso", "Seguro", "Equilibrado")
-        modelo_kmeans = KMeans(n_clusters=3, random_state=42, n_init='auto')
+        # Agrupará los estilos de los tableros en 2 clústeres (ej: "Agresivo", "Conservador")
+        modelo_kmeans = KMeans(n_clusters=2, random_state=42, n_init='auto')
         modelo_kmeans.fit(X)
         
         # Guardamos los archivos .pkl internamente
