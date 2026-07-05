@@ -454,5 +454,30 @@ function downloadFile(filename) {
     window.location.href = `/api/download/${filename}`;
 }
 
+async function showGraph() {
+    document.getElementById('graph-modal').style.display = 'flex';
+    document.getElementById('graph-img').style.display = 'none';
+    document.getElementById('graph-error').style.display = 'none';
+    document.getElementById('graph-loading').style.display = 'block';
+    
+    try {
+        const res = await fetch('/api/graph');
+        const data = await res.json();
+        if(res.ok) {
+            document.getElementById('graph-img').src = data.url + '?t=' + new Date().getTime();
+            document.getElementById('graph-img').style.display = 'block';
+            document.getElementById('graph-loading').style.display = 'none';
+        } else {
+            document.getElementById('graph-error').innerText = data.detail || 'Error desconocido';
+            document.getElementById('graph-error').style.display = 'block';
+            document.getElementById('graph-loading').style.display = 'none';
+        }
+    } catch (e) {
+        document.getElementById('graph-error').innerText = "Error de conexión";
+        document.getElementById('graph-error').style.display = 'block';
+        document.getElementById('graph-loading').style.display = 'none';
+    }
+}
+
 // INICIAR
 loadSelectionScreen();
