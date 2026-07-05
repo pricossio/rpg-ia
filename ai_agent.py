@@ -64,6 +64,14 @@ def minimax_alfa_beta(estado, profundidad, alfa, beta, maximizando, objetivo_pre
         return min_eval, mejor_accion
 
 def obtener_mejor_jugada(estado, nivel_dificultad, objetivo_predicho=None):
+    # En nivel Fácil (2), la IA tiene 40% de probabilidad de jugar al azar (cometer errores)
+    if nivel_dificultad == 2:
+        import random
+        if random.random() < 0.40:
+            acciones = estado.obtener_acciones_validas()
+            if acciones:
+                return random.choice(acciones)
+                
     _, mejor_accion = minimax_alfa_beta(estado, nivel_dificultad, -math.inf, math.inf, True, objetivo_predicho)
     return mejor_accion
 

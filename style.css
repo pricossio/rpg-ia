@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>RPG Táctico</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body onclick="startBgMusic()">
+    <!-- Efectos de Sonido Dinámicos -->
+    <audio id="sfx-sword" src="https://actions.google.com/sounds/v1/weapons/blade_swish.ogg" preload="auto"></audio>
+    <audio id="sfx-dagger" src="https://actions.google.com/sounds/v1/weapons/fast_swing.ogg" preload="auto"></audio>
+    <audio id="sfx-fire" src="https://actions.google.com/sounds/v1/weapons/explosion_layer.ogg" preload="auto"></audio>
+    <audio id="sfx-dark" src="https://actions.google.com/sounds/v1/science_fiction/alien_beam.ogg" preload="auto"></audio>
+    <audio id="sfx-lightning" src="https://actions.google.com/sounds/v1/weather/thunder_strike.ogg" preload="auto"></audio>
+    <audio id="sfx-heal" src="https://actions.google.com/sounds/v1/water/water_splash.ogg" preload="auto"></audio>
+    <!-- Música Pública Local (Misterio/Magos) -->
+    <audio id="bg-music" src="/static/bg-music.mp3" loop preload="auto"></audio>
+
+    <!-- PANTALLA DE SELECCIÓN -->
+    <div id="selection-screen">
+        <h1 style="font-family: 'Cinzel', serif; color: #d4af37; font-size: 3rem; margin:0; text-shadow: 0 0 20px rgba(212,175,55,0.5);">FORMA TU EQUIPO</h1>
+        <p style="color: #ccc; margin-top: 5px;">Selecciona 3 héroes para enfrentarte a la Inteligencia Artificial.</p>
+        <h3 id="selection-count" style="color: #3498db;">0 / 3 Seleccionados</h3>
+        
+        <div id="selection-grid" class="selection-grid">
+            <!-- Renderizado dinámicamente -->
+        </div>
+
+        <button id="btn-confirm-team" class="nav-btn primary" style="font-size: 1.5rem; padding: 15px 40px; margin-top: 30px; display: none;" onclick="confirmTeam()">¡ENTRAR A LA BATALLA!</button>
+    </div>
+
+    <!-- Barra de Navegación Minimalista Superior -->
+    <header class="top-nav">
+        <div class="nav-brand">RPG TACTICS</div>
+        <div class="nav-controls">
+            <div class="select-wrapper">
+                <span>Dificultad:</span>
+                <select id="diff-select" onchange="sendConfig()">
+                    <option value="2">Fácil</option>
+                    <option value="4" selected>Medio</option>
+                    <option value="6">Difícil</option>
+                </select>
+            </div>
+            
+            <div class="select-wrapper">
+                <span>Modo IA:</span>
+                <select id="mode-select" onchange="sendConfig()">
+                    <option value="Clásico">Clásico</option>
+                    <option value="Adaptativo">Adaptativo</option>
+                </select>
+            </div>
+            
+            <div class="divider-vertical"></div>
+            
+            <button class="nav-btn primary" style="background-color: #8e44ad; color: white; border: none;" onclick="showGraph()">📊 Ver Gráfico IA</button>
+            <button class="nav-btn primary" style="border-color: #2ecc71; color: #2ecc71;" onclick="location.reload()">Reiniciar Juego</button>
+            <button class="nav-btn" onclick="showSelectionScreen()">Cambiar Equipo</button>
+            <button class="nav-btn alert" onclick="clearMemory()">Borrar Memoria</button>
+            
+            <div class="dropdown">
+                <button class="nav-btn" style="border-color: #d4af37; color: #d4af37;">Descargar Archivos ▼</button>
+                <div class="dropdown-content">
+                    <a onclick="downloadFile('dataset_jugadas.csv')">Dataset (.csv)</a>
+                    <a onclick="downloadFile('modelo_arbol.pkl')">Modelo Árbol (.pkl)</a>
+                    <a onclick="downloadFile('modelo_kmeans.pkl')">Modelo KMeans (.pkl)</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-layout" id="main-game" style="display: none;">
+        <!-- Centro: Tablero de Juego -->
+        <div id="game-container">
+            <div class="board">
+                <div id="human-team" class="team"></div>
+                <div class="vs">VS</div>
+                <div id="ai-team" class="team"></div>
+            </div>
+            <div id="cards-hand" class="hand"></div>
+        </div>
+        
+        <!-- Panel Derecho: Historial Limpio -->
+        <aside class="sidebar-right">
+            <h3 class="panel-title">Historial de Combate</h3>
+            <div id="battle-log"></div>
+        </aside>
+    </div>
+    
+    <!-- MODAL GRÁFICO -->
+    <div id="graph-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center; flex-direction:column;">
+        <div style="background:#2c3e50; padding: 20px; border-radius:10px; text-align:center; max-width:90%;">
+            <h2 style="color:#f1c40f;">Gráfico K-Means (Dinámico)</h2>
+            <img id="graph-img" src="" style="max-width:100%; max-height:70vh; margin-top:10px; border-radius:5px; display:none;">
+            <p id="graph-loading" style="color:white; font-size:1.2rem;">Generando gráfico con Python...</p>
+            <p id="graph-error" style="color:#e74c3c; display:none;"></p>
+            <button class="nav-btn primary" style="margin-top:20px;" onclick="document.getElementById('graph-modal').style.display='none'">Cerrar</button>
+        </div>
+    </div>
+    
+    <script src="/static/game.js"></script>
+</body>
+</html>
