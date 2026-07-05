@@ -81,9 +81,9 @@ def human_action(action: ActionModel):
     if personaje_actual.equipo != "Humano":
         raise HTTPException(status_code=400, detail="No es tu turno")
     
-    # Se guarda automáticamente en CSV tal como se requiere, incluyendo el Modo actual
+    # Se guarda automáticamente en CSV tal como se requiere
     jugada = (action.accion_tipo, action.id_objetivo)
-    ai_agent.guardar_jugada_csv(estado_actual, jugada, modo_global)
+    ai_agent.guardar_jugada_csv(estado_actual, jugada)
     
     estado_actual.aplicar_accion(jugada)
     return {"status": "ok", "msg": f"Usaste {action.accion_tipo} en ID {action.id_objetivo}"}
@@ -138,7 +138,7 @@ def clear_memory():
                 pass
     return {"status": "ok", "msg": "Memoria de IA borrada con éxito."}
 
-# ESTAS SON LAS 3 RUTAS CLAVE PARA QUE LA PROFESORA DESCARGUE LOS ARCHIVOS
+#descargar archivos
 @app.get("/api/download/{filename}")
 def download_file(filename: str):
     valid_files = ["dataset_jugadas.csv", "modelo_arbol.pkl", "modelo_kmeans.pkl"]
