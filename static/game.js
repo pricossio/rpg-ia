@@ -1,0 +1,458 @@
+let currentState = null;
+let bgMusicStarted = false;
+let charactersCatalog = [];
+let selectedTeamIds = [];
+
+const charStyles = {
+    1: { emoji: '🛡️', sfx: 'sfx-sword', img: '/assets/warrior.png' },
+    2: { emoji: '🔱', sfx: 'sfx-sword', img: '/assets/paladin.png' },
+    3: { emoji: '🗡️', sfx: 'sfx-dagger', img: '/assets/asesino.png' },
+    4: { emoji: '🔥', sfx: 'sfx-fire', img: '/assets/mage.png' },
+    5: { emoji: '💀', sfx: 'sfx-dark', img: '/assets/nigromante.png' },
+    6: { emoji: '⚡', sfx: 'sfx-lightning', img: '/assets/ilusionista.png' },
+    7: { emoji: '✝️', sfx: 'sfx-heal', img: '/assets/healer.png' },
+    8: { emoji: '🌿', sfx: 'sfx-heal', img: '/assets/druida.png' },
+    9: { emoji: '🎵', sfx: 'sfx-heal', img: '/assets/bardo.png' }
+};
+
+function startBgMusic() {
+    if (!bgMusicStarted) {
+        const bgm = document.getElementById('bg-music');
+        if (bgm) {
+            bgm.volume = 0.2;
+            bgm.play().catch(e => console.log("Auto-play blocked"));
+            bgMusicStarted = true;
+        }
+    }
+}
+
+// ---------------------------
+// FASE 1: SELECCIÓN DE EQUIPO
+// ---------------------------
+async function loadSelectionScreen() {
+    document.getElementById('selection-screen').style.display = 'flex';
+    document.getElementById('main-game').style.display = 'none';
+    selectedTeamIds = [];
+    
+    const res = await fetch('/api/characters');
+    charactersCatalog = await res.json();
+    
+    const grid = document.getElementById('selection-grid');
+    grid.innerHTML = '';
+    
+    charactersCatalog.forEach(c => {
+        const sty = charStyles[c.id];
+        const div = document.createElement('div');
+        div.className = 'sel-card';
+        div.id = `sel-char-${c.id}`;
+        div.onclick = () => toggleSelection(c.id);
+        div.innerHTML = `
+            <img src="${sty.img}" class="sel-img">
+            <h3>${sty.emoji} ${c.nombre}</h3>
+            <p>${c.clase}</p>
+            <div style="margin-top:8px; font-size:0.75rem; color:#85c1e9;">
+                HP: ${c.hp} | ATK: ${c.ataque}
+            </div>
+        `;
+        grid.appendChild(div);
+    });
+}
+
+function toggleSelection(id) {
+    const idx = selectedTeamIds.indexOf(id);
+    if (idx > -1) {
+        selectedTeamIds.splice(idx, 1);
+        document.getElementById(`sel-char-${id}`).classList.remove('selected');
+    } else {
+        if (selectedTeamIds.length < 3) {
+            selectedTeamIds.push(id);
+            document.getElementById(`sel-char-${id}`).classList.add('selected');
+        }
+    }
+    
+    document.getElementById('selection-count').innerText = `${selectedTeamIds.length} / 3 Seleccionados`;
+    document.getElementById('btn-confirm-team').style.display = selectedTeamIds.length === 3 ? 'block' : 'none';
+}
+
+function showSelectionScreen() {
+    loadSelectionScreen();
+}
+
+async function confirmTeam() {
+    if (selectedTeamIds.length !== 3) return;
+    
+    document.getElementById('selection-screen').style.display = 'none';
+    document.getElementById('main-game').style.display = 'flex';
+    
+    await sendConfig();
+    await fetch('/api/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ team_ids: selectedTeamIds })
+    });
+    
+    document.getElementById('battle-log').innerHTML = '';
+    logBattle("Inicio de Combate 3v3");
+    await fetchState();
+}
+
+// ---------------------------
+// FASE 2: MOTOR DE COMBATE
+// ---------------------------
+async function sendConfig() {
+    const modo = document.getElementById('mode-select').value;
+    const diff = parseInt(document.getElementById('diff-select').value);
+    await fetch('/api/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({modo: modo, dificultad: diff})
+    });
+    
+    if (document.getElementById('main-game').style.display !== 'none') {
+        logBattle(`[Sistema] Configuración cambiada: IA Modo ${modo} (Dificultad ${diff})`, true);
+        if (modo === 'Adaptativo') {
+            logBattle(`[Sistema] Machine Learning (K-Means y Árboles) ACTIVADO.`, true);
+        }
+    }
+}
+
+async function fetchState() {
+    const res = await fetch('/api/state');
+    currentState = await res.json();
+    renderBoard();
+}
+
+function renderBoard() {
+    const humanTeam = document.getElementById('human-team');
+    const aiTeam = document.getElementById('ai-team');
+    humanTeam.innerHTML = '';
+    aiTeam.innerHTML = '';
+
+    currentState.personajes.forEach(p => {
+        const baseId = getTemplateIdByName(p.nombre);
+        const sty = charStyles[baseId];
+        
+        const div = document.createElement('div');
+        div.className = `character ${!p.vivo ? 'dead' : ''} ${p.id === currentState.turno_actual ? 'active' : ''}`;
+        div.id = `char-${p.id}`;
+        
+        // Setup Drag & Drop Receivers
+        div.ondragover = (e) => { e.preventDefault(); div.classList.add('droppable'); };
+        div.ondragleave = (e) => { div.classList.remove('droppable'); };
+        div.ondrop = (e) => handleDrop(e, p);
+
+        const hpPercent = (p.hp / p.hp_max) * 100;
+        const colorVida = hpPercent > 50 ? '#2ecc71' : (hpPercent > 20 ? '#f1c40f' : '#e74c3c');
+
+        div.innerHTML = `
+            <img src="${sty ? sty.img : '/assets/warrior.png'}" class="char-img" draggable="false">
+            <div style="flex:1;">
+                <div style="font-family:'Cinzel', serif; font-size: 1.1rem; font-weight: bold; color: #f1c40f; text-shadow: 0 0 5px rgba(241,196,15,0.5);">${sty ? sty.emoji : ''} ${p.nombre}</div>
+                <div class="hp-bar-container">
+                    <div class="hp-bar" style="width: ${hpPercent}%; background: ${colorVida};"></div>
+                </div>
+                <div style="text-align: right; font-size: 0.8rem; margin-top: 2px; color: #ccc;">${p.hp} / ${p.hp_max} HP</div>
+            </div>
+        `;
+        
+        if (p.equipo === 'Humano') {
+            humanTeam.appendChild(div);
+        } else {
+            aiTeam.appendChild(div);
+        }
+    });
+
+    renderHand();
+}
+
+function getTemplateIdByName(name) {
+    const cleanName = name.replace(" Oscuro", "").replace(" IA", "").trim();
+    const t = charactersCatalog.find(c => c.nombre === cleanName);
+    return t ? t.id : 1;
+}
+
+function renderHand() {
+    const hand = document.getElementById('cards-hand');
+    hand.innerHTML = '';
+    
+    if (currentState.ganador) {
+        hand.innerHTML = `<h1 style="color:#f1c40f; text-transform:uppercase; font-family:'Cinzel', serif;">¡EL GANADOR ES EL EQUIPO ${currentState.ganador}!</h1>`;
+        return;
+    }
+    
+    const activeChar = currentState.personajes.find(p => p.id === currentState.turno_actual);
+    if (!activeChar || activeChar.equipo !== 'Humano') {
+        hand.innerHTML = '<h2 style="color:#7f8c8d; animation: pulse 1s infinite alternate;">La IA está calculando su estrategia...</h2>';
+        if (activeChar && activeChar.equipo === 'IA') {
+            setTimeout(processAITurn, 1500);
+        }
+        return;
+    }
+
+    const baseId = getTemplateIdByName(activeChar.nombre);
+    const sty = charStyles[baseId];
+
+    // Configurar las 3 acciones posibles para esta clase
+    let actions = [];
+    
+    // Acción 1: Ataque Básico
+    actions.push({ action: 'Atacar', title: 'Ataque Básico', icon: '⚔️', color: 'linear-gradient(135deg, #34495e, #2c3e50)', desc: 'Daño normal<br>Arrastra al enemigo' });
+    
+    // Acción 2: Especial (Depende de clase)
+    if (activeChar.clase === 'Guerrero') {
+        actions.push({ action: 'Especial', title: 'Golpe Temerario', icon: '🔥', color: 'linear-gradient(135deg, #c0392b, #e74c3c)', desc: '1.5x Daño (-10 HP)<br>Arrastra al enemigo' });
+    } else if (activeChar.clase === 'Mago') {
+        actions.push({ action: 'Especial', title: 'Robo de Vida', icon: '🦇', color: 'linear-gradient(135deg, #8e44ad, #2980b9)', desc: 'Cura 30% del daño<br>Arrastra al enemigo' });
+    } else if (activeChar.clase === 'Sanador') {
+        actions.push({ action: 'Especial', title: 'Castigo Sagrado', icon: '⚡', color: 'linear-gradient(135deg, #f39c12, #d35400)', desc: '1.2x Daño mágico<br>Arrastra al enemigo' });
+    }
+    
+    // Acción 3: Curar
+    let healTitle = activeChar.clase === 'Sanador' ? "Curación Divina" : "Poción de Vida";
+    let healDesc = activeChar.clase === 'Sanador' ? "Restaura 35 HP<br>Arrastra al aliado" : "Restaura 20 HP<br>Arrastra al aliado";
+    let healIcon = activeChar.clase === 'Sanador' ? "💖" : "🧪";
+    actions.push({ action: 'Curar', title: healTitle, icon: healIcon, color: 'linear-gradient(135deg, #27ae60, #2ecc71)', desc: healDesc });
+    
+    // Barajar (Shuffle) las acciones aleatoriamente
+    actions = actions.sort(() => Math.random() - 0.5);
+
+    actions.forEach((act, idx) => {
+        const container = document.createElement('div');
+        container.className = 'card-container';
+        container.id = `card-container-${idx}`;
+        
+        const inner = document.createElement('div');
+        inner.className = 'card-inner';
+        inner.id = `card-inner-${idx}`;
+        
+        if (idx < 2) {
+            // CARTA SEGURA (Visible desde el inicio)
+            inner.classList.add('flipped'); 
+            const front = document.createElement('div');
+            front.className = 'card-face card-front';
+            front.style.background = act.color;
+            front.draggable = true;
+            front.ondragstart = (e) => { 
+                e.dataTransfer.setData('action', act.action);
+            };
+            front.innerHTML = `<h1>${act.icon}</h1><h3>${act.title}</h3><p>${act.desc}</p>`;
+            
+            const back = document.createElement('div');
+            back.className = 'card-face card-back';
+            
+            inner.appendChild(back);
+            inner.appendChild(front);
+        } else {
+            // CARTA INCÓGNITA (El Riesgo)
+            const back = document.createElement('div');
+            back.className = 'card-face card-back';
+            back.innerHTML = `<h1 style="color:#e74c3c; text-shadow: 0 0 15px #e74c3c;">❓</h1>`;
+            back.style.borderColor = "#e74c3c";
+            back.onclick = () => revealIncognita(idx, act.action);
+            
+            const front = document.createElement('div');
+            front.className = 'card-face card-front';
+            front.style.background = act.color;
+            front.innerHTML = `<h1>${act.icon}</h1><h3>${act.title}</h3><p>${act.desc}</p>`;
+            
+            inner.appendChild(back);
+            inner.appendChild(front);
+        }
+        
+        container.appendChild(inner);
+        hand.appendChild(container);
+    });
+}
+
+function revealIncognita(selectedIndex, actionType) {
+    const handContainers = document.querySelectorAll('.card-container');
+    handContainers.forEach((container, idx) => {
+        if (idx === selectedIndex) {
+            const inner = document.getElementById(`card-inner-${idx}`);
+            inner.classList.add('flipped');
+            const front = inner.querySelector('.card-front');
+            front.draggable = true;
+            front.ondragstart = (e) => { e.dataTransfer.setData('action', actionType); };
+        } else {
+            // Se ocultan las cartas seguras porque tomaste el riesgo
+            container.classList.add('hidden');
+        }
+    });
+    logBattle("[Sistema] ¡Descartaste las cartas seguras y te arriesgaste con la Incógnita!", true);
+}
+
+async function handleDrop(e, targetChar) {
+    e.preventDefault();
+    document.getElementById(`char-${targetChar.id}`).classList.remove('droppable');
+    
+    const actionType = e.dataTransfer.getData('action');
+    if (!actionType) return;
+    
+    const activeChar = currentState.personajes.find(p => p.id === currentState.turno_actual);
+    if ((actionType === 'Atacar' || actionType === 'Especial') && targetChar.equipo === 'Humano') {
+        alert("Cuidado! No puedes atacar a un aliado."); return;
+    }
+    if (actionType === 'Curar' && targetChar.equipo === 'IA') {
+        alert("Error! No puedes curar a un enemigo."); return;
+    }
+
+    // SONIDO ELIMINADO A PETICIÓN DEL USUARIO
+    // const baseId = getTemplateIdByName(activeChar.nombre);
+    // const audioId = actionType === 'Curar' ? 'sfx-heal' : charStyles[baseId].sfx;
+    // playSfx(audioId);
+    
+    const targetDiv = document.getElementById(`char-${targetChar.id}`);
+    targetDiv.classList.add('hit');
+    setTimeout(() => targetDiv.classList.remove('hit'), 400);
+
+    logBattle(`[Sistema] Procesando jugada...`, true);
+
+    const res = await fetch('/api/human_action', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ accion_tipo: actionType, id_objetivo: targetChar.id })
+    });
+    
+    await res.json();
+    logBattle(`Jugador (${activeChar.nombre}) usó ${actionType} en ${targetChar.nombre}`);
+    
+    document.getElementById('cards-hand').innerHTML = '';
+    await fetchState();
+}
+
+async function processAITurn() {
+    const res = await fetch('/api/ai_turn', { method: 'POST' });
+    const data = await res.json();
+    
+    if (data.status === 'ok') {
+        if (data.ml_msg) {
+            logBattle(data.ml_msg, true);
+        }
+        
+        const actionType = data.action[0];
+        const targetId = data.action[1];
+        const activeChar = currentState.personajes.find(p => p.id === currentState.turno_actual);
+        const targetChar = currentState.personajes.find(p => p.id === targetId);
+        
+        logBattle(`IA (${activeChar.nombre}) usó ${actionType} en ${targetChar.nombre}`);
+        
+        // SONIDO ELIMINADO A PETICIÓN DEL USUARIO
+        // const baseId = getTemplateIdByName(activeChar.nombre);
+        // const audioId = actionType === 'Curar' ? 'sfx-heal' : charStyles[baseId].sfx;
+        // playSfx(audioId);
+
+        const targetDiv = document.getElementById(`char-${targetId}`);
+        if(targetDiv) {
+            targetDiv.classList.add('hit');
+            setTimeout(() => targetDiv.classList.remove('hit'), 400);
+        }
+    }
+    await fetchState();
+}
+
+function logBattle(msg, isSystem = false) {
+    const log = document.getElementById('battle-log');
+    const pClass = isSystem ? "system" : "";
+    log.innerHTML = `<p class="${pClass}">${msg}</p>` + log.innerHTML;
+}
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSfx(type) {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    
+    const now = audioCtx.currentTime;
+    
+    // 1. CAPA DE VIENTO MISTERIOSO (Ruido blanco con filtro bajo)
+    const bufferSize = audioCtx.sampleRate * 0.5; // 0.5 segundos de sonido
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+    }
+    
+    const noiseSource = audioCtx.createBufferSource();
+    noiseSource.buffer = buffer;
+    
+    const noiseFilter = audioCtx.createBiquadFilter();
+    noiseFilter.type = 'lowpass';
+    noiseFilter.frequency.setValueAtTime(300, now); // Muy opaco y oscuro
+    noiseFilter.frequency.exponentialRampToValueAtTime(50, now + 0.5);
+    
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(0, now);
+    noiseGain.gain.linearRampToValueAtTime(0.3, now + 0.05);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+    
+    noiseSource.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(audioCtx.destination);
+    
+    // 2. CAPA DE IMPACTO CINEMATOGRÁFICO (Sub-bass drop)
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine'; // Onda pura, nada retro/arcade
+    
+    if (type === 'sfx-sword' || type === 'sfx-dagger') {
+        // Impacto sordo de ataque (Boom rápido)
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.exponentialRampToValueAtTime(30, now + 0.3);
+    } else if (type === 'sfx-heal') {
+        // Resonancia mística
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.exponentialRampToValueAtTime(150, now + 0.6);
+        noiseFilter.frequency.setValueAtTime(800, now); // Viento más claro y mágico
+    } else {
+        // Magia (Fuego, Rayo, Oscura) -> Bajo vibrante y tenso
+        osc.frequency.setValueAtTime(100, now);
+        osc.frequency.exponentialRampToValueAtTime(20, now + 0.5);
+        
+        // Tremolo misterioso para magia
+        const tremolo = audioCtx.createOscillator();
+        tremolo.type = 'sine';
+        tremolo.frequency.value = 15;
+        const tremoloGain = audioCtx.createGain();
+        tremoloGain.gain.value = 30;
+        tremolo.connect(tremoloGain);
+        tremoloGain.connect(osc.frequency);
+        tremolo.start(now);
+        tremolo.stop(now + 0.5);
+    }
+    
+    const oscGain = audioCtx.createGain();
+    oscGain.gain.setValueAtTime(0, now);
+    oscGain.gain.linearRampToValueAtTime(0.7, now + 0.05);
+    oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+    
+    osc.connect(oscGain);
+    oscGain.connect(audioCtx.destination);
+    
+    osc.start(now);
+    noiseSource.start(now);
+    
+    osc.stop(now + 0.6);
+    noiseSource.stop(now + 0.6);
+}
+
+async function startGame() {
+    // Si la página carga por primera vez, abrimos la selección en lugar de la batalla
+    if(selectedTeamIds.length === 0) {
+        showSelectionScreen();
+    } else {
+        // Reiniciar con el mismo equipo
+        confirmTeam();
+    }
+}
+
+async function clearMemory() {
+    const log = document.getElementById('battle-log');
+    const res = await fetch('/api/clear_memory', { method: 'POST' });
+    const data = await res.json();
+    logBattle("[Sistema] " + data.msg, true);
+}
+
+function downloadFile(filename) {
+    window.location.href = `/api/download/${filename}`;
+}
+
+// INICIAR
+loadSelectionScreen();
