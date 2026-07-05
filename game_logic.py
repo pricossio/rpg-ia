@@ -130,10 +130,13 @@ class EstadoJuego:
         self.avanzar_turno()
 
     def avanzar_turno(self):
+        equipo_actual = self.obtener_personaje_actual().equipo
+        siguiente_equipo = "IA" if equipo_actual == "Humano" else "Humano"
+        
         self.indice_turno = (self.indice_turno + 1) % len(self.orden_turnos)
         if self.ganador is None:
             intentos = 0
-            while not self.obtener_personaje_actual().vivo and intentos < 6:
+            while (not self.obtener_personaje_actual().vivo or self.obtener_personaje_actual().equipo != siguiente_equipo) and intentos < 12:
                 self.indice_turno = (self.indice_turno + 1) % len(self.orden_turnos)
                 intentos += 1
 
